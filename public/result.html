@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分析报告</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-dark:  #1F3864;
+      --blue-mid:   #2E5FAC;
+      --blue-light: #BDD7EE;
+      --bg:         #F4F7FB;
+      --surface:    #FFFFFF;
+      --text:       #1A1A2E;
+      --muted:      #6B7A99;
+      --danger:     #C0392B;
+      --green:      #27AE60;
+      --radius:     14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 16px 48px;
+    }
+
+    .container { width: 100%; max-width: 480px; }
+
+    /* ── Top bar ── */
+    .topbar {
+      display: flex; align-items: center;
+      padding: 12px 0 20px;
+      gap: 12px;
+    }
+    .back-link {
+      font-size: 14px; color: var(--blue-mid);
+      text-decoration: none; font-weight: 500;
+    }
+    .back-link:active { opacity: .6; }
+    .topbar h1 {
+      font-size: 18px; font-weight: 700;
+      color: var(--blue-dark); flex: 1; text-align: center;
+    }
+    .topbar-spacer { width: 48px; } /* balance the back link */
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(31,56,100,.08);
+      margin-bottom: 14px;
+    }
+
+    /* ── Loading ── */
+    #loading-section { text-align: center; padding-top: 48px; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid var(--blue-light);
+      border-top-color: var(--blue-dark);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-status { font-size: 15px; color: var(--muted); }
+
+    /* ── Score cards ── */
+    .scores-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      margin-bottom: 14px;
+    }
+    .score-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 18px 14px 16px;
+      box-shadow: 0 2px 12px rgba(31,56,100,.08);
+      text-align: center;
+    }
+    .score-label {
+      font-size: 12px; font-weight: 600;
+      color: var(--muted); letter-spacing: 0.3px;
+      margin-bottom: 10px;
+    }
+    .score-value {
+      font-size: 42px; font-weight: 800;
+      color: var(--blue-dark); line-height: 1;
+    }
+    .score-unit { font-size: 16px; font-weight: 600; color: var(--blue-mid); }
+    .score-note {
+      font-size: 11px; color: var(--muted);
+      margin-top: 8px; line-height: 1.4;
+      min-height: 14px;
+    }
+
+    /* ── Score color bands ── */
+    .score-value.high  { color: var(--green); }
+    .score-value.mid   { color: #E67E22; }
+    .score-value.low   { color: var(--danger); }
+
+    /* ── Summary section ── */
+    .section-title {
+      font-size: 13px; font-weight: 700;
+      color: var(--blue-dark);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 12px;
+    }
+    .summary-text {
+      font-size: 15px; line-height: 1.7;
+      color: var(--text);
+    }
+
+    /* ── Actions ── */
+    .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+
+    .btn-primary {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      height: 52px;
+      background: var(--blue-dark); color: #fff;
+      font-size: 16px; font-weight: 600;
+      border: none; border-radius: 10px;
+      cursor: pointer; text-decoration: none;
+      transition: background .2s;
+    }
+    .btn-primary:hover { background: var(--blue-mid); }
+
+    .btn-secondary {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      height: 52px;
+      background: transparent; color: var(--blue-dark);
+      font-size: 16px; font-weight: 600;
+      border: 2px solid var(--blue-light);
+      border-radius: 10px; cursor: pointer;
+      transition: border-color .2s, background .2s;
+      width: 100%;
+    }
+    .btn-secondary:hover { border-color: var(--blue-mid); background: #EFF6FF; }
+
+    /* ── Error ── */
+    #error-section { text-align: center; padding-top: 48px; }
+    .error-icon { font-size: 40px; margin-bottom: 14px; }
+    .error-title { font-size: 17px; font-weight: 700; color: var(--danger); margin-bottom: 8px; }
+    .error-detail { font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <a href="/" class="back-link">← 重新分析</a>
+      <h1>分析报告</h1>
+      <div class="topbar-spacer"></div>
+    </div>
+
+    <!-- Loading -->
+    <section id="loading-section">
+      <div class="spinner"></div>
+      <p id="loading-status">正在处理中，请稍候…</p>
+    </section>
+
+    <!-- Content -->
+    <section id="content-section" hidden>
+      <div class="scores-row">
+        <div class="score-card">
+          <div class="score-label">需求一致性</div>
+          <div class="score-value" id="consistency-score">—</div>
+          <div class="score-note"  id="consistency-note"></div>
+        </div>
+        <div class="score-card">
+          <div class="score-label">决策自主性</div>
+          <div class="score-value" id="autonomy-score">—</div>
+          <div class="score-note"  id="autonomy-note"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">核心发现</div>
+        <p class="summary-text" id="summary"></p>
+      </div>
+
+      <div class="actions">
+        <a id="download-btn" href="#" class="btn-primary">
+          <span>⬇</span> 下载 Word 报告
+        </a>
+        <button id="share-btn" class="btn-secondary" hidden>
+          <span>↗</span> 分享报告
+        </button>
+      </div>
+    </section>
+
+    <!-- Error -->
+    <section id="error-section" hidden>
+      <div class="error-icon">⚠️</div>
+      <div class="error-title">处理失败</div>
+      <div class="error-detail" id="error-msg"></div>
+      <a href="/" class="btn-primary">重新上传</a>
+    </section>
+  </div>
+
+  <script>
+    const taskId = location.pathname.split('/').pop();
+
+    const loadingSec  = document.getElementById('loading-section');
+    const contentSec  = document.getElementById('content-section');
+    const errorSec    = document.getElementById('error-section');
+    const loadingStatus = document.getElementById('loading-status');
+
+    const STATUS_LABELS = {
+      transcribing: '正在转写录音…',
+      analyzing:    '正在分析内容…',
+      generating:   '正在生成报告…',
+    };
+
+    // ── Poll until done, then load result ──────────────────────
+    function startPolling() {
+      const id = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/status/${taskId}`);
+          const { status, error } = await res.json();
+
+          if (STATUS_LABELS[status]) loadingStatus.textContent = STATUS_LABELS[status];
+
+          if (status === 'done') {
+            clearInterval(id);
+            loadResult();
+          } else if (status === 'error') {
+            clearInterval(id);
+            showError(error || '服务端处理失败，请重试');
+          }
+        } catch {
+          // Network hiccup — keep polling
+        }
+      }, 2000);
+    }
+
+    async function loadResult() {
+      try {
+        const res = await fetch(`/api/result/${taskId}`);
+        if (!res.ok) throw new Error(res.statusText);
+        const { analysis, downloadUrl } = await res.json();
+        renderResult(analysis, downloadUrl);
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function renderResult(analysis, downloadUrl) {
+      const s2 = analysis.section2_decision || {};
+
+      // Scores
+      setScore('consistency', s2.consistencyScore, s2.consistencyNote);
+      setScore('autonomy',    s2.autonomyScore,    s2.autonomyNote);
+
+      // Summary
+      document.getElementById('summary').textContent =
+        analysis.coreSummary || '暂无核心发现';
+
+      // Download
+      document.getElementById('download-btn').href = downloadUrl;
+
+      // Share (Web Share API)
+      const shareBtn = document.getElementById('share-btn');
+      if (navigator.share) {
+        shareBtn.hidden = false;
+        shareBtn.addEventListener('click', () => {
+          navigator.share({
+            title: '客户访谈分析报告',
+            text:  analysis.coreSummary || '',
+            url:   location.href,
+          }).catch(() => {});
+        });
+      }
+
+      loadingSec.hidden = true;
+      contentSec.hidden = false;
+    }
+
+    function setScore(key, score, note) {
+      const el   = document.getElementById(`${key}-score`);
+      const noteEl = document.getElementById(`${key}-note`);
+
+      if (score == null) { el.textContent = '—'; return; }
+
+      el.textContent = score;
+      el.classList.add(score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low');
+
+      if (note && note !== 'null') noteEl.textContent = note;
+    }
+
+    function showError(msg) {
+      loadingSec.hidden = true;
+      contentSec.hidden = true;
+      document.getElementById('error-msg').textContent = msg;
+      errorSec.hidden = false;
+    }
+
+    // ── Entry point ─────────────────────────────────────────────
+    (async function init() {
+      if (!taskId) { showError('无效的报告链接'); return; }
+
+      try {
+        const res = await fetch(`/api/status/${taskId}`);
+        if (!res.ok) throw new Error('任务不存在');
+        const { status, error } = await res.json();
+
+        if (status === 'done') {
+          loadResult();
+        } else if (status === 'error') {
+          showError(error || '处理失败');
+        } else {
+          if (STATUS_LABELS[status]) loadingStatus.textContent = STATUS_LABELS[status];
+          startPolling();
+        }
+      } catch (err) {
+        showError(err.message);
+      }
+    })();
+  </script>
+</body>
+</html>

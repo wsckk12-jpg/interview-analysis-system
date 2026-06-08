@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>客户访谈分析</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-dark:  #1F3864;
+      --blue-mid:   #2E5FAC;
+      --blue-light: #BDD7EE;
+      --bg:         #F4F7FB;
+      --surface:    #FFFFFF;
+      --text:       #1A1A2E;
+      --muted:      #6B7A99;
+      --danger:     #C0392B;
+      --radius:     14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+
+    .container { width: 100%; max-width: 480px; }
+
+    header { text-align: center; margin-bottom: 32px; padding-top: 12px; }
+    header h1 {
+      font-size: 22px; font-weight: 700;
+      color: var(--blue-dark); letter-spacing: 0.5px;
+    }
+    header p { font-size: 14px; color: var(--muted); margin-top: 6px; }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(31,56,100,.08);
+      margin-bottom: 16px;
+    }
+
+    /* ── Drop zone ── */
+    #drop-zone {
+      border: 2px dashed var(--blue-light);
+      border-radius: 10px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      -webkit-user-select: none; user-select: none;
+    }
+    #drop-zone.dragover { border-color: var(--blue-mid); background: #EFF6FF; }
+    #drop-zone.has-file { border-color: var(--blue-mid); border-style: solid; }
+
+    .upload-icon { font-size: 36px; margin-bottom: 10px; }
+    .upload-label { font-size: 16px; font-weight: 600; color: var(--blue-dark); }
+    .upload-hint  { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .file-name    {
+      font-size: 13px; color: var(--blue-mid); margin-top: 10px;
+      font-weight: 500; word-break: break-all;
+    }
+
+    /* ── Instruction field ── */
+    .field { margin-top: 18px; }
+    .field label { display: block; font-size: 14px; font-weight: 600; color: var(--blue-dark); margin-bottom: 8px; }
+    .field textarea {
+      width: 100%; resize: vertical;
+      border: 1.5px solid #DDE3EF;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 88px;
+      transition: border-color .2s;
+      outline: none;
+    }
+    .field textarea:focus { border-color: var(--blue-mid); }
+    .field textarea::placeholder { color: #B0BAD1; }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      display: block; width: 100%;
+      height: 52px;
+      background: var(--blue-dark);
+      color: #fff;
+      font-size: 16px; font-weight: 600;
+      border: none; border-radius: 10px;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background .2s, opacity .2s;
+      letter-spacing: 0.5px;
+    }
+    .btn-primary:hover { background: var(--blue-mid); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Error ── */
+    .error-msg {
+      background: #FEF2F2; border-left: 3px solid var(--danger);
+      color: var(--danger); font-size: 13px;
+      border-radius: 6px; padding: 10px 12px;
+      margin-top: 14px;
+    }
+
+    /* ── Progress ── */
+    #progress-section { text-align: center; }
+    #progress-section .card { padding: 36px 24px; }
+
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid var(--blue-light);
+      border-top-color: var(--blue-dark);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .step-list { list-style: none; text-align: left; margin-top: 20px; }
+    .step-list li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 14px; color: var(--muted);
+      padding: 6px 0;
+    }
+    .step-list li.active { color: var(--blue-dark); font-weight: 600; }
+    .step-list li.done   { color: #27AE60; }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: #DDE3EF;
+    }
+    .step-list li.active .step-dot { background: var(--blue-dark); }
+    .step-list li.done  .step-dot  { background: #27AE60; }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>客户访谈分析</h1>
+      <p>上传录音，自动生成分析报告</p>
+    </header>
+
+    <!-- Upload form -->
+    <section id="upload-section">
+      <div class="card">
+        <div id="drop-zone">
+          <div class="upload-icon">🎙️</div>
+          <div class="upload-label">点击选择录音文件</div>
+          <div class="upload-hint">支持 MP3、WAV、M4A、WebM（最大 200 MB）</div>
+          <div class="file-name" id="file-name"></div>
+          <input type="file" id="audio" accept="audio/*,video/mp4" hidden>
+        </div>
+
+        <div class="field">
+          <label for="instruction">分析侧重点（选填）</label>
+          <textarea id="instruction"
+            placeholder="例如：重点关注客户对学区的态度，以及配偶在决策中的作用"
+          ></textarea>
+        </div>
+
+        <div class="error-msg" id="error-text" hidden></div>
+
+        <button class="btn-primary" id="submit-btn">开始分析</button>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress-section" hidden>
+      <div class="card">
+        <div class="spinner"></div>
+        <ul class="step-list">
+          <li id="step-transcribing">
+            <span class="step-dot"></span>转写录音
+          </li>
+          <li id="step-analyzing">
+            <span class="step-dot"></span>分析内容
+          </li>
+          <li id="step-generating">
+            <span class="step-dot"></span>生成报告
+          </li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const audioInput   = document.getElementById('audio');
+    const dropZone     = document.getElementById('drop-zone');
+    const fileName     = document.getElementById('file-name');
+    const instruction  = document.getElementById('instruction');
+    const submitBtn    = document.getElementById('submit-btn');
+    const uploadSec    = document.getElementById('upload-section');
+    const progressSec  = document.getElementById('progress-section');
+    const errorText    = document.getElementById('error-text');
+
+    const STEP_ORDER = ['transcribing', 'analyzing', 'generating'];
+    const STEP_LABELS = {
+      transcribing: '转写录音',
+      analyzing:    '分析内容',
+      generating:   '生成报告',
+    };
+
+    // ── File selection ──────────────────────────────────────────
+    dropZone.addEventListener('click', () => audioInput.click());
+    audioInput.addEventListener('change', updateFile);
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const dt = e.dataTransfer;
+      if (dt.files[0]) {
+        // Assign to input via DataTransfer
+        const transfer = new DataTransfer();
+        transfer.items.add(dt.files[0]);
+        audioInput.files = transfer.files;
+        updateFile();
+      }
+    });
+
+    function updateFile() {
+      const file = audioInput.files[0];
+      if (!file) return;
+      fileName.textContent = file.name;
+      dropZone.classList.add('has-file');
+    }
+
+    // ── Submit ──────────────────────────────────────────────────
+    submitBtn.addEventListener('click', async () => {
+      const file = audioInput.files[0];
+      if (!file) { showError('请先选择录音文件'); return; }
+
+      hideError();
+      uploadSec.hidden    = true;
+      progressSec.hidden  = false;
+      setStep('transcribing');
+
+      const form = new FormData();
+      form.append('audio', file);
+      form.append('instruction', instruction.value.trim());
+
+      let taskId;
+      try {
+        const res = await fetch('/api/upload-and-analyze', { method: 'POST', body: form });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        ({ taskId } = await res.json());
+      } catch (err) {
+        restoreUpload(`上传失败：${err.message}`);
+        return;
+      }
+
+      pollStatus(taskId);
+    });
+
+    // ── Polling ─────────────────────────────────────────────────
+    function pollStatus(taskId) {
+      const id = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/status/${taskId}`);
+          const { status, error } = await res.json();
+
+          if (STEP_ORDER.includes(status)) setStep(status);
+
+          if (status === 'done') {
+            clearInterval(id);
+            window.location.href = `/result/${taskId}`;
+          } else if (status === 'error') {
+            clearInterval(id);
+            restoreUpload(error || '处理失败，请重试');
+          }
+        } catch {
+          // Network hiccup — keep polling
+        }
+      }, 2000);
+    }
+
+    function setStep(active) {
+      STEP_ORDER.forEach(key => {
+        const el   = document.getElementById(`step-${key}`);
+        const idx  = STEP_ORDER.indexOf(key);
+        const aIdx = STEP_ORDER.indexOf(active);
+        el.className = idx < aIdx ? 'done' : idx === aIdx ? 'active' : '';
+      });
+    }
+
+    function showError(msg) {
+      errorText.textContent = msg;
+      errorText.hidden = false;
+    }
+
+    function hideError() {
+      errorText.hidden = true;
+    }
+
+    function restoreUpload(errMsg) {
+      progressSec.hidden = true;
+      uploadSec.hidden   = false;
+      showError(errMsg);
+    }
+  </script>
+</body>
+</html>
