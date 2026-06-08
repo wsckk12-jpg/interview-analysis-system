@@ -26,13 +26,9 @@ const tasks = new Map();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Explicit fallback so GET / always serves index.html
+// Serve index.html for root path
 app.get('/', (req, res) => {
-  const indexPath = path.join(__dirname, 'public', 'index.html');
-  if (!fs.existsSync(indexPath)) {
-    return res.status(500).send(`index.html not found at: ${indexPath} | cwd: ${process.cwd()} | __dirname: ${__dirname} | files: ${fs.readdirSync(__dirname).join(',')}`);
-  }
-  res.sendFile(indexPath);
+  res.sendFile('index.html', { root: path.join(__dirname, 'public') });
 });
 
 const upload = multer({
