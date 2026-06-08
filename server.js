@@ -26,6 +26,11 @@ const tasks = new Map();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Explicit fallback so GET / always serves index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const upload = multer({
   dest: UPLOADS_DIR,
   limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB — ffmpeg handles compression
