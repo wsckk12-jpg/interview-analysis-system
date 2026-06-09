@@ -59,27 +59,27 @@ async function compressAudio(inputPath, bitrateKbps = 32) {
 }
 
 /**
- * Ensure the audio file fits within Groq's 25 MB limit.
+ * Convert any audio file to MP3 and ensure it fits Groq's 25 MB limit.
+ * Always converts to MP3 so Groq accepts the file (covers caf, mov, m4a, etc.).
  * Returns { filePath, isTmp } — caller owns cleanup when isTmp is true.
  */
 async function prepareFile(originalPath) {
-  const { size } = fs.statSync(originalPath);
-
-  if (size <= GROQ_SIZE_LIMIT) {
-    return { filePath: originalPath, isTmp: false };
-  }
-
-  const sizeMB = (size / 1024 / 1024).toFixed(1);
-  console.warn(`[transcribe] File is ${sizeMB} MB — compressing with ffmpeg (32 kbps mono)...`);
-
   await checkFfmpeg();
-  let tmpPath = await compressAudio(originalPath, 32);
 
-  const compressedSize = fs.statSync(tmpPath).size;
-  if (compressedSize > GROQ_SIZE_LIMIT) {
-    // Still too large — try again at 16 kbps (handles ~5-hour recordings)
+  const { size } = fs.statSync(originalPath);
+  const sizeMB = (size / 1024 / 1024).toFixed(1);
+
+  // Choose bitrate: 32 kbps for files already under limit, lower if large
+  const bitrateKbps = size > GROQ_SIZE_LIMIT ? 32 : 64;
+
+  console.log(`[transcribe] Converting to MP3 (${sizeMB} MB → ${bitrateKbps} kbps)...`);
+  let tmpPath = await compressAudio(originalPath, bitrateKbps);
+
+  const convertedSize = fs.statSync(tmpPath).size;
+  if (convertedSize > GROQ_SIZE_LIMIT) {
+    // Still too large after 32 kbps — retry at 16 kbps (~5 h recordings)
     const v1 = tmpPath;
-    console.warn('[transcribe] Still over limit — retrying at 16 kbps...');
+    console.warn('[transcribe] Still over 25 MB — retrying at 16 kbps...');
     tmpPath = await compressAudio(originalPath, 16);
     fs.rmSync(v1, { force: true });
 
@@ -93,7 +93,7 @@ async function prepareFile(originalPath) {
   }
 
   const finalMB = (fs.statSync(tmpPath).size / 1024 / 1024).toFixed(1);
-  console.log(`[transcribe] Compressed to ${finalMB} MB`);
+  console.log(`[transcribe] Ready: ${finalMB} MB MP3`);
   return { filePath: tmpPath, isTmp: true };
 }
 
