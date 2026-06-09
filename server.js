@@ -22,14 +22,17 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 // Shape: Map<taskId, { status, analysis?, filename?, error?, createdAt }>
 const tasks = new Map();
 
+// ── Read HTML pages into memory at startup ────────────────────────
+// Avoids runtime path-resolution issues on any host
+const INDEX_HTML  = fs.readFileSync(path.join(__dirname, 'public', 'index.html'),  'utf8');
+const RESULT_HTML = fs.readFileSync(path.join(__dirname, 'public', 'result.html'), 'utf8');
+
 // ── Middleware ───────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve index.html for root path
-app.get('/', (req, res) => {
-  res.sendFile('index.html', { root: path.join(__dirname, 'public') });
-});
+app.get('/',              (req, res) => res.type('html').send(INDEX_HTML));
+app.get('/result/:taskId', (req, res) => res.type('html').send(RESULT_HTML));
 
 const upload = multer({
   dest: UPLOADS_DIR,
@@ -116,11 +119,6 @@ app.get('/api/download/:filename', (req, res) => {
 
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
   res.download(filePath, '客户访谈分析报告.docx');
-});
-
-// Result page — serve result.html for any /result/:taskId path
-app.get('/result/:taskId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/result.html'));
 });
 
 // ── Start ────────────────────────────────────────────────────────
