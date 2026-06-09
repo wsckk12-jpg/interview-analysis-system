@@ -15,8 +15,16 @@ const RETRY_BASE_MS = 1000;
 // Non-retryable HTTP status codes
 const FATAL_STATUSES = new Set([400, 401, 403, 404]);
 
+// ── Key presence check at startup ───────────────────────────────
+const GROQ_KEY = process.env.GROQ_API_KEY || '';
+if (!GROQ_KEY) {
+  console.error('[Groq] ❌ GROQ_API_KEY is not set');
+} else {
+  console.log(`[Groq] key loaded: ${GROQ_KEY.slice(0, 8)}…`);
+}
+
 const groq = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: GROQ_KEY,
   baseURL: 'https://api.groq.com/openai/v1',
 });
 
@@ -108,6 +116,20 @@ async function callWhisper(filePath) {
   return response;
 }
 
+function logGroqError(err, context = '') {
+  const status  = err.status  ?? 'N/A';
+  const type    = err.error?.type    ?? err.name ?? 'unknown';
+  const detail  = err.error?.message ?? err.message ?? String(err);
+  console.error(
+    `[Groq][transcribe] ❌ ${context}` +
+    `  status=${status}  type=${type}` +
+    `  message=${detail}`
+  );
+  if (status === 401) {
+    console.error('[Groq][transcribe] → 401 Invalid API Key. 请检查 Render 环境变量 GROQ_API_KEY 是否正确');
+  }
+}
+
 async function transcribeWithRetry(filePath) {
   let lastErr;
 
@@ -116,6 +138,7 @@ async function transcribeWithRetry(filePath) {
       return await callWhisper(filePath);
     } catch (err) {
       lastErr = err;
+      logGroqError(err, `attempt ${attempt}/${MAX_RETRIES} `);
 
       if (FATAL_STATUSES.has(err.status)) {
         throw err; // No point retrying auth/bad-request errors
@@ -123,16 +146,13 @@ async function transcribeWithRetry(filePath) {
 
       if (attempt < MAX_RETRIES) {
         const delay = RETRY_BASE_MS * 2 ** (attempt - 1); // 1 s, 2 s, 4 s
-        console.warn(
-          `[transcribe] Attempt ${attempt}/${MAX_RETRIES} failed (${err.message}). ` +
-          `Retrying in ${delay / 1000}s...`
-        );
+        console.warn(`[Groq][transcribe] retrying in ${delay / 1000}s...`);
         await sleep(delay);
       }
     }
   }
 
-  throw new Error(`Transcription failed after ${MAX_RETRIES} attempts: ${lastErr.message}`);
+  throw new Error(`[Groq] Transcription failed after ${MAX_RETRIES} attempts: ${lastErr.message}`);
 }
 
 // ---------------------------------------------------------------------------

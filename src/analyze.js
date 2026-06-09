@@ -2,8 +2,16 @@ require('dotenv').config();
 const OpenAI = require('openai');
 const { SYSTEM_PROMPT } = require('./systemPrompt');
 
+// ── Key presence check at startup ───────────────────────────────
+const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || '';
+if (!DEEPSEEK_KEY) {
+  console.error('[DeepSeek] ❌ DEEPSEEK_API_KEY is not set');
+} else {
+  console.log(`[DeepSeek] key loaded: ${DEEPSEEK_KEY.slice(0, 8)}…`);
+}
+
 const deepseek = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
+  apiKey: DEEPSEEK_KEY,
   baseURL: 'https://api.deepseek.com',
 });
 
@@ -15,14 +23,33 @@ function extractJson(text) {
     .trim();
 }
 
+function logDeepSeekError(err, context = '') {
+  const status = err.status  ?? 'N/A';
+  const type   = err.error?.type    ?? err.name ?? 'unknown';
+  const detail = err.error?.message ?? err.message ?? String(err);
+  console.error(
+    `[DeepSeek][analyze] ❌ ${context}` +
+    `  status=${status}  type=${type}` +
+    `  message=${detail}`
+  );
+  if (status === 401) {
+    console.error('[DeepSeek][analyze] → 401 Invalid API Key. 请检查 Render 环境变量 DEEPSEEK_API_KEY 是否正确');
+  }
+}
+
 async function callDeepSeek(messages) {
-  const completion = await deepseek.chat.completions.create({
-    model: 'deepseek-v4-flash',
-    max_tokens: 8000,
-    temperature: 0.3,
-    messages,
-  });
-  return completion.choices[0].message.content;
+  try {
+    const completion = await deepseek.chat.completions.create({
+      model: 'deepseek-v4-flash',
+      max_tokens: 8000,
+      temperature: 0.3,
+      messages,
+    });
+    return completion.choices[0].message.content;
+  } catch (err) {
+    logDeepSeekError(err, 'callDeepSeek ');
+    throw err;
+  }
 }
 
 /**
