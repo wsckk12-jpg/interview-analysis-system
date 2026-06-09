@@ -34,13 +34,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/',              (req, res) => res.type('html').send(INDEX_HTML));
 app.get('/result/:taskId', (req, res) => res.type('html').send(RESULT_HTML));
 
+// Accept any field name ('file' or 'audio') and any MIME type.
+// iOS Shortcuts often sends application/octet-stream; ffmpeg handles the rest.
 const upload = multer({
   dest: UPLOADS_DIR,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB — ffmpeg handles compression
-  fileFilter(req, file, cb) {
-    if (/^(audio|video)\//.test(file.mimetype)) cb(null, true);
-    else cb(new Error(`Unsupported MIME type: ${file.mimetype}`));
-  },
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB — ffmpeg will compress if needed
 });
 
 // ── Async pipeline ───────────────────────────────────────────────
@@ -78,16 +76,45 @@ async function runPipeline(taskId, audioPath, instruction) {
 // ── API routes ───────────────────────────────────────────────────
 
 // POST /api/upload-and-analyze
-app.post('/api/upload-and-analyze', upload.single('audio'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No audio file uploaded' });
+// Accepts field name 'file' (iOS Shortcuts default) or 'audio'
+app.post('/api/upload-and-analyze', (req, res) => {
+  upload.any()(req, res, (err) => {
+    // ── Multer-level errors (file too large, etc.) ──────────────
+    if (err) {
+      const msg = err instanceof multer.MulterError
+        ? `Upload error: ${err.message}`
+        : err.message || 'Upload failed';
+      console.error('[upload] Multer error:', msg);
+      return res.status(400).json({ error: msg });
+    }
 
-  const taskId      = crypto.randomUUID();
-  const instruction = (req.body.instruction || '').trim();
+    // ── Find the audio file (field name: 'file' or 'audio') ─────
+    const file = (req.files || []).find(f =>
+      f.fieldname === 'file' || f.fieldname === 'audio'
+    ) || (req.files || [])[0]; // fallback: accept any field
 
-  tasks.set(taskId, { status: 'transcribing', createdAt: Date.now() });
-  runPipeline(taskId, req.file.path, instruction); // fire and forget
+    if (!file) {
+      console.error('[upload] No file in request. Fields received:', Object.keys(req.body));
+      return res.status(400).json({
+        error: 'No audio file received. Send the file in a field named "file" or "audio".',
+      });
+    }
 
-  res.json({ taskId });
+    console.log(
+      `[upload] Received — field: ${file.fieldname}, ` +
+      `name: ${file.originalname}, ` +
+      `size: ${(file.size / 1024).toFixed(0)} KB, ` +
+      `mime: ${file.mimetype}`
+    );
+
+    const taskId      = crypto.randomUUID();
+    const instruction = (req.body.instruction || '').trim();
+
+    tasks.set(taskId, { status: 'transcribing', createdAt: Date.now() });
+    runPipeline(taskId, file.path, instruction); // fire and forget
+
+    res.json({ taskId });
+  });
 });
 
 // GET /api/status/:taskId
@@ -122,6 +149,13 @@ app.get('/api/download/:filename', (req, res) => {
 });
 
 app.get('/health', (req, res) => res.json({ status: 'ok', entry: 'server.js' }));
+
+// ── Global error handler — always return JSON, never HTML ────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[unhandled]', err.message);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
 
 // ── Start ────────────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`Server → http://localhost:${PORT}`));
