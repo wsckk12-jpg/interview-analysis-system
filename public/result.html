@@ -198,8 +198,8 @@
 
     <!-- Error -->
     <section id="error-section" hidden>
-      <div class="error-icon">⚠️</div>
-      <div class="error-title">处理失败</div>
+      <div class="error-icon" id="error-icon">⚠️</div>
+      <div class="error-title" id="error-title">处理失败</div>
       <div class="error-detail" id="error-msg"></div>
       <a href="/" class="btn-primary">重新上传</a>
     </section>
@@ -295,20 +295,28 @@
       if (note && note !== 'null') noteEl.textContent = note;
     }
 
-    function showError(msg) {
+    function showError(msg, isExpired = false) {
       loadingSec.hidden = true;
       contentSec.hidden = true;
+      if (isExpired) {
+        document.getElementById('error-icon').textContent  = '🔄';
+        document.getElementById('error-title').textContent = '结果已过期';
+      }
       document.getElementById('error-msg').textContent = msg;
       errorSec.hidden = false;
     }
 
     // ── Entry point ─────────────────────────────────────────────
     (async function init() {
-      if (!taskId) { showError('无效的报告链接'); return; }
+      if (!taskId || taskId === 'result') { showError('无效的报告链接'); return; }
 
       try {
         const res = await fetch(`/api/status/${taskId}`);
-        if (!res.ok) throw new Error('任务不存在');
+        if (res.status === 404) {
+          showError('服务器重启后任务记录已清除，请重新上传录音。', true);
+          return;
+        }
+        if (!res.ok) throw new Error('查询失败，请刷新重试');
         const { status, error } = await res.json();
 
         if (status === 'done') {

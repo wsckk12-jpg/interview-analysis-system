@@ -18,9 +18,39 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 fs.mkdirSync(REPORTS_DIR, { recursive: true });
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// ── In-memory task store ─────────────────────────────────────────
+// ── Task store — persisted to disk so restarts don't lose results ─
 // Shape: Map<taskId, { status, analysis?, filename?, error?, createdAt }>
 const tasks = new Map();
+const TASKS_FILE = path.join(REPORTS_DIR, 'tasks.json');
+
+function persistTasks() {
+  try {
+    fs.writeFileSync(TASKS_FILE, JSON.stringify(Object.fromEntries(tasks)));
+  } catch (e) {
+    console.warn('[tasks] persist failed:', e.message);
+  }
+}
+
+// Load completed tasks from disk at startup (in-flight ones are marked error)
+try {
+  if (fs.existsSync(TASKS_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8'));
+    for (const [id, task] of Object.entries(saved)) {
+      if (task.status === 'done') {
+        // Only restore done tasks whose report file still exists
+        const reportExists = task.filename &&
+          fs.existsSync(path.join(REPORTS_DIR, task.filename));
+        tasks.set(id, reportExists ? task : { ...task, status: 'error', error: 'Report file missing after restart' });
+      } else {
+        // Any in-flight task at restart time is unrecoverable
+        tasks.set(id, { ...task, status: 'error', error: 'Server restarted while processing' });
+      }
+    }
+    console.log(`[tasks] Restored ${tasks.size} tasks from disk`);
+  }
+} catch (e) {
+  console.warn('[tasks] Could not load tasks.json:', e.message);
+}
 
 // ── Read HTML pages into memory at startup ────────────────────────
 // Avoids runtime path-resolution issues on any host
@@ -31,7 +61,8 @@ const RESULT_HTML = fs.readFileSync(path.join(__dirname, 'public', 'result.html'
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/',              (req, res) => res.type('html').send(INDEX_HTML));
+app.get('/',               (req, res) => res.type('html').send(INDEX_HTML));
+app.get('/result',         (req, res) => res.redirect('/'));
 app.get('/result/:taskId', (req, res) => res.type('html').send(RESULT_HTML));
 
 // Accept any field name ('file' or 'audio') and any MIME type.
@@ -46,14 +77,17 @@ async function runPipeline(taskId, audioPath, instruction) {
   const task = tasks.get(taskId);
   try {
     task.status = 'transcribing';
+    persistTasks();
     console.log(`[${taskId}] Transcribing...`);
     const transcript = await transcribeAudio(audioPath);
 
     task.status = 'analyzing';
+    persistTasks();
     console.log(`[${taskId}] Analyzing...`);
     const analysis = await analyzeInterview(transcript, instruction);
 
     task.status = 'generating';
+    persistTasks();
     console.log(`[${taskId}] Generating report...`);
     const buffer = await generateReport(analysis);
 
@@ -63,10 +97,12 @@ async function runPipeline(taskId, audioPath, instruction) {
     task.status   = 'done';
     task.analysis = analysis;
     task.filename = filename;
+    persistTasks();
     console.log(`[${taskId}] Done`);
   } catch (err) {
     task.status = 'error';
     task.error  = err.message;
+    persistTasks();
     console.error(`[${taskId}] Error:`, err.message);
   } finally {
     fs.rmSync(audioPath, { force: true });
