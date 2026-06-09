@@ -149,7 +149,8 @@ app.post('/api/upload-and-analyze', (req, res) => {
     tasks.set(taskId, { status: 'transcribing', createdAt: Date.now() });
     runPipeline(taskId, file.path, instruction); // fire and forget
 
-    res.json({ taskId });
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.json({ taskId, resultUrl: `${baseUrl}/result/${taskId}` });
   });
 });
 
