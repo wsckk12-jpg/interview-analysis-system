@@ -121,5 +121,7 @@ app.get('/api/download/:filename', (req, res) => {
   res.download(filePath, '客户访谈分析报告.docx');
 });
 
+app.get('/health', (req, res) => res.json({ status: 'ok', entry: 'server.js' }));
+
 // ── Start ────────────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`Server → http://localhost:${PORT}`));
